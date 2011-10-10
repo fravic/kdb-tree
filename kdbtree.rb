@@ -3,35 +3,100 @@ require './region.rb'
 
 module KDBTree
 
-  MAX_CHILDREN = 5
-  MAX_POINTS = 8
-
   class Tree
 
+    REGION_NODE_CAPACITY = 5
+    POINT_NODE_CAPACITY = 8
+
+    class DomainError < Exception; end
     class NodeOverflow < Exception; end
 
     class Node
-      def initialize(region, split_dimension = 0)
+
+      def initialize(region, split_dimension, capacity)
         @region = region
         @split_dimension = split_dimension
-        @children = []
-        @points = []
         @categories = Set.new
+        @capacity = capacity
       end
-      attr_reader :children, :region, :points, :categories
+      attr_reader :region, :categories
 
-      def is_point_node?
-        return @children.empty? || !@points.empty?
+      def split_nodes(dimension, cutter)
+        subregions = @region.split(dimension, cutter)
+        next_dim = (dimension + 1) % @region.num_dimensions
+
+        return [self.class.new(subregions[0], next_dim, @capacity),
+                self.class.new(subregions[1], next_dim, @capacity)]
       end
+
+    end  # class Node
+
+    class PointNode < Node
+
+      def initialize(region, split_dimension = 0, capacity = POINT_NODE_CAPCITY)
+        super(region, split_dimension, capacity)
+        @points = []
+      end
+      attr_reader :points
 
       def query(region, cat = nil)
-        # If this is a point node, return points within the region
-        if is_point_node?
-          return @points.select { |p| region.contains_point?(p[:coords]) && (p[:category] == cat || cat.nil?) }
+        # Return points within the region
+        return @points.select { |p| region.contains_point?(p[:coords]) && (p[:category] == cat || cat.nil?) }
+      end
+
+      def insert(point)
+        categories << point[:category]
+
+        raise DomainError unless @region.contains_point?(point[:coords])
+
+        @points.push(point)
+        if @points.size > @capacity
+          raise NodeOverflow
+        end
+      end
+
+      def split(dimension = nil, cutter = nil)
+        if dimension.nil? || cutter.nil?
+          dimension = @split_dimension
+          cutter = dimension_median(dimension)
         end
 
-        # Otherwise, recurse on children intersecting the regions and containing
-        # the correct categories
+        splits = split_nodes(dimension, cutter)
+        split_points(splits)
+
+        return splits
+      end
+
+      private
+
+      def dimension_median(dim)
+        med_idx = (@points.size / 2).floor - 1
+        @points.sort_by { |p| p[:coords][dim] }
+        (@points[med_idx][:coords][dim] + @points[med_idx + 1][:coords][dim]) / 2
+      end
+
+      def split_points(splits)
+        @points.each do |p|
+          if splits[0].region.contains_point?(p[:coords])
+            splits[0].insert(p)
+          else
+            splits[1].insert(p)
+          end
+        end
+      end
+
+    end  # class PointNode
+
+    class RegionNode < Node
+
+      def initialize(region, split_dimension = 0, capacity = REGION_NODE_CAPACITY)
+        super(region, split_dimension, capacity)
+        @children = []
+      end
+      attr_reader :children
+
+      def query(region, cat = nil)
+        # Recurse on children intersecting the regions and containing the correct categories
         points = []
         @children.each do |child|
           if child.region.intersects?(region) && (cat.nil? || child.categories.include?(cat))
@@ -44,15 +109,6 @@ module KDBTree
       def insert(point)
         categories << point[:category]
 
-        # If this is a point node, simply add the new point
-        if is_point_node?
-          @points.push(point)
-          if @points.size > MAX_POINTS
-            raise NodeOverflow
-          end
-          return
-        end
-
         @children.each_with_index do |child, idx|
           if child.region.contains_point?(point[:coords])
             begin
@@ -63,7 +119,7 @@ module KDBTree
               @children.delete_at(idx)
               @children.concat(split_child)
 
-              if @children.size > MAX_CHILDREN
+              if @children.size > @capacity
                 raise NodeOverflow
               end
             end
@@ -71,90 +127,63 @@ module KDBTree
           end
         end
 
-        raise "Error: The point to be inserted is not in this tree's domain"
+        raise DomainError
       end
 
       def split(dimension = nil, cutter = nil)
         if dimension.nil? || cutter.nil?
           dimension = @split_dimension
-
-          if is_point_node?
-            cutter = dimension_median(dimension)
-          else
-            range = @region.ranges[dimension]
-            cutter = (range.max - range.min) / 2 + range.min
-          end
+          range = @region.ranges[dimension]
+          cutter = (range.max - range.min) / 2 + range.min
         end
+
         splits = split_nodes(dimension, cutter)
-
-        if is_point_node?
-          add_split_points(splits)
-        else
-          add_split_regions(splits, dimension, cutter)
-        end
+        split_regions(splits, dimension, cutter)
 
         return splits
       end
 
+      protected
+
+      def add_child(child)
+        @children.push(child)
+        @categories.merge(child.categories)
+      end
+
       private
 
-      def dimension_median(dim)
-        @points.sort_by { |p| p[:coords][dim] }
-        len = @points.size
-        (@points[len/2][:coords][dim] + @points[(len + 1)/2][:coords][dim]) / 2
-      end
-
-      def split_nodes(dimension, cutter)
-        subregions = @region.split(dimension, cutter)
-        next_dim = (dimension + 1) % @region.num_dimensions
-
-        left = Node.new(subregions[0], next_dim)
-        right = Node.new(subregions[1], next_dim)
-
-        return [left, right]
-      end
-
-      def add_split_points(splits)
-        @points.each do |p|
-          if splits[0].region.contains_point?(p[:coords])
-            splits[0].insert(p)
-          else
-            splits[1].insert(p)
-          end
-        end
-      end
-
-      def add_split_regions(splits, dimension, cutter)
+      def split_regions(splits, dimension, cutter)
         @children.each do |child|
           if splits[0].region.contains_region?(child.region)
-            splits[0].children.push(child)
-            splits[0].categories.merge(child.categories)
+            splits[0].add_child(child)
           elsif splits[1].region.contains_region?(child.region)
-            splits[1].children.push(child)
-            splits[1].categories.merge(child.categories)
+            splits[1].add_child(child)
           else
             split_child = child.split(dimension, cutter)
-            splits[0].children.push(split_child[0])
-            splits[0].categories.merge(split_child[0].categories)
-            splits[1].children.push(split_child[1])
-            splits[1].categories.merge(split_child[1].categories)
+            splits.each_with_index do |split, i|
+              split.add_child(split_child[i])
+            end
           end
         end
       end
-    end  # class Node
 
-    def initialize(domain)
+    end  # class RegionNode
+
+    def initialize(domain, region_capacity = REGION_NODE_CAPACITY, point_capacity = POINT_NODE_CAPACITY)
       @domain = domain
+      @region_capacity = region_capacity
+      @point_capacity = point_capacity
+
+      if region_capacity < 2 || point_capacity < 2
+        raise "Region and point capacities must be at least 2"
+      end
     end
+    attr_reader :root
 
     def insert(coords, data, cat = nil)
       point = {:coords => coords, :data => data, :category => cat}
 
-      if @root.nil?
-        @root = Node.new(@domain)
-        @root.points.push(point)
-        return
-      end
+      @root = PointNode.new(@domain, 0, @point_capacity) if @root.nil?
 
       begin
         @root.insert(point)
@@ -162,7 +191,7 @@ module KDBTree
         # The root contains too many points.  Split it.
         split_root = @root.split
 
-        @root = Node.new(@domain)
+        @root = RegionNode.new(@domain, 0, @region_capacity)
         @root.children.concat(split_root)
       end
     end
