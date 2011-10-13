@@ -48,7 +48,7 @@ module KDBTree
       end
 
       def insert(point)
-        categories << point[:category].first
+        categories.merge(point[:category])
 
         raise DomainError unless @region.contains_point?(point[:coords])
 
@@ -80,7 +80,7 @@ module KDBTree
             end
           end
 
-          cutter = dimension_median(dimension)
+          cutter = dimension_average(dimension)
         end
 
         splits = split_nodes(dimension, cutter)
@@ -92,20 +92,17 @@ module KDBTree
       private
 
       def points_on_line?(dim)
-        all_on_line = true
         @points.each_with_index do |p, i|
           next if i == 0
           on_line = p[:coords][dim] == @points[i-1][:coords][dim]
-          all_on_line = all_on_line && on_line
+          return false unless on_line
         end
-        return all_on_line
+        return true
       end
 
-      def dimension_median(dim)
-        @points.sort_by { |p| p[:coords][dim] }
-        med1 = @points.size / 2
-        med2 = (@points.size + 1) / 2
-        (@points[med1][:coords][dim] + @points[med2][:coords][dim]) / 2.0
+      def dimension_average(dim)
+        coords = @points.map { |p| p[:coords][dim] }
+        return coords.inject(:+).to_f / coords.size
       end
 
       def split_points(splits)
@@ -166,7 +163,7 @@ module KDBTree
         if dimension.nil? || cutter.nil?
           dimension = @split_dimension
           range = @region.ranges[dimension]
-          cutter = (range.max - range.min) / 2.0 + range.min
+          cutter = (range.end - range.begin) / 2.0 + range.begin
         else
           # Ensure that the passed cutter is valid
           range = @region.ranges[dimension]

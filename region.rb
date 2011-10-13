@@ -21,7 +21,7 @@ module KDBTree
     def contains_region?(region_y)
       @ranges.each_with_index do |r, i|
         r_y = region_y.ranges[i]
-        return false unless r.min <= r_y.min && r.max >= r_y.max
+        return false unless r.begin <= r_y.begin && r.end >= r_y.end
       end
       return true
     end
@@ -38,12 +38,12 @@ module KDBTree
       left = Array.new(@ranges)
       right = Array.new(@ranges)
 
-      if right[dimension].max < splitter
+      if right[dimension].end < splitter
         left, right = right, left
       end
 
-      left[dimension] = (left[dimension].min..splitter)
-      right[dimension] = (splitter..right[dimension].max)
+      left[dimension] = (left[dimension].begin...splitter)
+      right[dimension] = (splitter..right[dimension].end)
 
       return [Region.new(left), Region.new(right)]
     end

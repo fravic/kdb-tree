@@ -76,12 +76,15 @@ describe KDBTree do
     tree.query(Region.new([(0...10), (0...10)])).size.should == 10
   end
 
-  it "returns results of the correct category" do
+  it "returns only results of the correct category" do
     tree = Tree.new(Region.new([(0...10), (0...10)]), 2, 2)
+    coordarr = []
     (1..10).each do |i|
       coords = [rand(10), rand(10)]
+      coordarr << coords
       tree.insert(coords, {}, i.to_s)
     end
+    puts coordarr.to_s
     tree.query(Region.new([(0...10), (0...10)]), "5").size.should == 1
   end
 
