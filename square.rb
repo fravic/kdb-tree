@@ -27,7 +27,7 @@ payfile.each_line do |line|
   coords = [lat, lng]
   data = {:name => name, :category => category}
   tree.insert(coords, data, category)
-  print "Initializing payments tree.  Adding payment #{payfile.lineno}...\r"
+#  print "Initializing payments tree.  Adding payment #{payfile.lineno}...\r"
 end
 
 # Run queries from file

@@ -5,8 +5,8 @@ module KDBTree
 
   class Tree
 
-    REGION_NODE_CAPACITY = 5
-    POINT_NODE_CAPACITY = 8
+    REGION_CAPACITY = 5
+    POINT_CAPACITY = 8
 
     class DomainError < Exception; end
     class NodeOverflow < Exception; end
@@ -41,7 +41,10 @@ module KDBTree
 
       def query(region, cat = nil)
         # Return points within the region
-        return @points.select { |p| region.contains_point?(p[:coords]) && (p[:category] == cat || cat.nil?) }
+        return @points.select { |p|
+          region.contains_point?(p[:coords]) &&
+          (p[:category] == cat || cat.nil?)
+        }
       end
 
       def insert(point)
@@ -49,7 +52,14 @@ module KDBTree
 
         raise DomainError unless @region.contains_point?(point[:coords])
 
-        @points.push(point)
+        # If the point already exists, just add to its data array
+        exists = @points.select { |p| p[:coords] == point[:coords] }.first
+        if !exists.nil?
+          exists[:data].concat(point[:data])
+        else
+          @points.push(point)
+        end
+
         if @points.size > @capacity
           raise NodeOverflow
         end
@@ -58,6 +68,17 @@ module KDBTree
       def split(dimension = nil, cutter = nil)
         if dimension.nil? || cutter.nil?
           dimension = @split_dimension
+
+          # If all of the points are at the same coord on this dimension
+          # choose another dimension to avoid a NodeOverflow
+          while points_on_line?(dimension)
+            dimension = (dimension + 1) % @region.num_dimensions
+            if dimension == @split_dimension
+              # All dimensions failed: splitting is impossible
+              throw "Too many points on same coordinate"
+            end
+          end
+
           cutter = dimension_median(dimension)
         end
 
@@ -68,6 +89,16 @@ module KDBTree
       end
 
       private
+
+      def points_on_line?(dim)
+        all_on_line = true
+        @points.each_with_index do |p, i|
+          next if i == 0
+          on_line = p[:coords][dim] == @points[i-1][:coords][dim]
+          all_on_line = all_on_line && on_line
+        end
+        return all_on_line
+      end
 
       def dimension_median(dim)
         med_idx = (@points.size / 2).floor - 1
@@ -89,17 +120,18 @@ module KDBTree
 
     class RegionNode < Node
 
-      def initialize(region, split_dimension = 0, capacity = REGION_NODE_CAPACITY)
+      def initialize(region, split_dimension = 0, capacity = REGION_CAPACITY)
         super(region, split_dimension, capacity)
         @children = []
       end
       attr_reader :children
 
       def query(region, cat = nil)
-        # Recurse on children intersecting the regions and containing the correct categories
+        # Recurse on children intersecting the regions with the correct category
         points = []
         @children.each do |child|
-          if child.region.intersects?(region) && (cat.nil? || child.categories.include?(cat))
+          category_match = (cat.nil? || child.categories.include?(cat))
+          if child.region.intersects?(region) && category_match
             points.concat(child.query(region, cat))
           end
         end
@@ -109,32 +141,34 @@ module KDBTree
       def insert(point)
         categories << point[:category]
 
-        @children.each_with_index do |child, idx|
-          if child.region.contains_point?(point[:coords])
-            begin
-              child.insert(point)
-            rescue NodeOverflow
-              # The child contains too many points.  Split it.
-              split_child = child.split
-              @children.delete_at(idx)
-              @children.concat(split_child)
+        region = @children.select { |child|
+          child.region.contains_point?(point[:coords])
+        }.first
+        raise DomainError if region.nil?
 
-              if @children.size > @capacity
-                raise NodeOverflow
-              end
-            end
-            return
+        begin
+          region.insert(point)
+        rescue NodeOverflow
+          # The child contains too many points.  Split it.
+          split_child = region.split
+          @children.delete(region)
+          @children.concat(split_child)
+
+          if @children.size > @capacity
+            raise NodeOverflow
           end
         end
-
-        raise DomainError
       end
 
       def split(dimension = nil, cutter = nil)
         if dimension.nil? || cutter.nil?
           dimension = @split_dimension
           range = @region.ranges[dimension]
-          cutter = (range.max - range.min) / 2 + range.min
+          cutter = (range.max - range.min) / 2.0 + range.min
+        else
+          # Ensure that the passed cutter is valid
+          range = @region.ranges[dimension]
+          throw DomainError unless range.include?(cutter)
         end
 
         splits = split_nodes(dimension, cutter)
@@ -169,19 +203,22 @@ module KDBTree
 
     end  # class RegionNode
 
-    def initialize(domain, region_capacity = REGION_NODE_CAPACITY, point_capacity = POINT_NODE_CAPACITY)
+    def initialize(domain,
+                   region_cap = REGION_CAPACITY,
+                   point_cap = POINT_CAPACITY)
       @domain = domain
-      @region_capacity = region_capacity
-      @point_capacity = point_capacity
+      @region_capacity = region_cap
+      @point_capacity = point_cap
 
-      if region_capacity < 2 || point_capacity < 2
+      if region_cap < 2 || point_cap < 2
         raise "Region and point capacities must be at least 2"
       end
     end
     attr_reader :root
 
     def insert(coords, data, cat = nil)
-      point = {:coords => coords, :data => data, :category => cat}
+      # Convert the data into array elements for internal collapsing
+      point = {:coords => coords, :data => [data], :category => cat}
 
       @root = PointNode.new(@domain, 0, @point_capacity) if @root.nil?
 
@@ -198,7 +235,19 @@ module KDBTree
 
     def query(region, cat = nil)
       return [] if @root.nil?
-      @root.query(region, cat)
+
+      # Uncollapse data points for output
+      output = []
+      @root.query(region, cat).each do |p|
+        p[:data].each do |data|
+          output << {
+            :coords => p[:coords],
+            :data => data,
+            :category => p[:category]
+          }
+        end
+      end
+      return output
     end
 
   end  # class Tree

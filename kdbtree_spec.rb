@@ -3,6 +3,19 @@ require './kdbtree.rb'
 describe KDBTree do
   include KDBTree
 
+  it "queries for points correctly within a given region" do
+    tree = Tree.new(Region.new([(0...10), (0...10)]), 2, 2)
+    tree.insert([5, 5], {})
+    tree.insert([6, 6], {})
+    tree.insert([4, 4], {})
+    tree.insert([0, 0], {})
+    tree.insert([2, 2], {})
+    tree.query(Region.new([(4..6), (4..6)])).each do |p|
+      p[:coords][0].should be_within(2).of(5)
+      p[:coords][1].should be_within(2).of(5)
+    end
+  end
+
   it "returns no points from an empty domain" do
     tree = Tree.new(Region.new([(-90...90), (-180...180)]))
     tree.query(Region.new([(-90...90), (-180...180)])).should be_empty
@@ -62,6 +75,15 @@ describe KDBTree do
   end
 
   it "handles multiple points at the same location" do
+    tree = Tree.new(Region.new([(0...10), (0...10)]), 2, 2)
+    (1..10).each do |i|
+      tree.insert([5, 5], {})
+    end
+    tree.query(Region.new([(0...10), (0...10)])).size.should == 10
+  end
+
+  it "returns results of the correct category" do
   end
 
 end
+
