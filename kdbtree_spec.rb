@@ -68,12 +68,6 @@ describe KDBTree do
     traverse_tree.call(tree.root, 0).uniq.size.should == 1
   end
 
-  it "has disjoint regions in every RegionNode" do
-  end
-
-  it "always covers the entire domain" do
-  end
-
   it "handles multiple points at the same location" do
     tree = Tree.new(Region.new([(0...10), (0...10)]), 2, 2)
     (1..10).each do |i|
@@ -83,6 +77,12 @@ describe KDBTree do
   end
 
   it "returns results of the correct category" do
+    tree = Tree.new(Region.new([(0...10), (0...10)]), 2, 2)
+    (1..10).each do |i|
+      coords = [rand(10), rand(10)]
+      tree.insert(coords, {}, i.to_s)
+    end
+    tree.query(Region.new([(0...10), (0...10)]), "5").size.should == 1
   end
 
 end

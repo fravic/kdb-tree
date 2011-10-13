@@ -43,12 +43,12 @@ module KDBTree
         # Return points within the region
         return @points.select { |p|
           region.contains_point?(p[:coords]) &&
-          (p[:category] == cat || cat.nil?)
+          (p[:category].include?(cat) || cat.nil?)
         }
       end
 
       def insert(point)
-        categories << point[:category]
+        categories << point[:category].first
 
         raise DomainError unless @region.contains_point?(point[:coords])
 
@@ -56,6 +56,7 @@ module KDBTree
         exists = @points.select { |p| p[:coords] == point[:coords] }.first
         if !exists.nil?
           exists[:data].concat(point[:data])
+          exists[:category].concat(point[:category])
         else
           @points.push(point)
         end
@@ -101,9 +102,10 @@ module KDBTree
       end
 
       def dimension_median(dim)
-        med_idx = (@points.size / 2).floor - 1
         @points.sort_by { |p| p[:coords][dim] }
-        (@points[med_idx][:coords][dim] + @points[med_idx + 1][:coords][dim]) / 2
+        med1 = @points.size / 2
+        med2 = (@points.size + 1) / 2
+        (@points[med1][:coords][dim] + @points[med2][:coords][dim]) / 2.0
       end
 
       def split_points(splits)
@@ -139,7 +141,7 @@ module KDBTree
       end
 
       def insert(point)
-        categories << point[:category]
+        categories << point[:category].first
 
         region = @children.select { |child|
           child.region.contains_point?(point[:coords])
@@ -218,7 +220,7 @@ module KDBTree
 
     def insert(coords, data, cat = nil)
       # Convert the data into array elements for internal collapsing
-      point = {:coords => coords, :data => [data], :category => cat}
+      point = {:coords => coords, :data => [data], :category => [cat]}
 
       @root = PointNode.new(@domain, 0, @point_capacity) if @root.nil?
 
@@ -239,11 +241,12 @@ module KDBTree
       # Uncollapse data points for output
       output = []
       @root.query(region, cat).each do |p|
-        p[:data].each do |data|
+        p[:data].each_with_index do |data, i|
+          next unless p[:category][i] == cat || cat.nil?
           output << {
             :coords => p[:coords],
-            :data => data,
-            :category => p[:category]
+            :data => p[:data][i],
+            :category => p[:category][i]
           }
         end
       end
