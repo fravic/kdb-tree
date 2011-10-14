@@ -1,3 +1,18 @@
+# class Tree
+#
+# KDBTree provides a scalable space-partitioning data structure for organizing
+# points in k-dimensional space.  Unlike a standard k-d tree, you can continue
+# to insert points into the KDBTree after its initial construction.  This allows
+# us to continually process interspersed queries and inserts, with a theoretical
+# infinite stream of incoming points.
+#
+# Usage:
+# tree = Tree.new(Region.new([(-90...90), (-180...180)]))
+# tree.insert([0, 0], {}, "a")
+# results = tree.query(Region.new([(-90...90), (-180...180)]), "a")
+#
+# Written by Fravic (fravic.com) for the Square coding challenge.
+
 require 'set'
 require './region.rb'
 

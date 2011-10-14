@@ -1,3 +1,12 @@
+# kdbtree_spec.rb
+#
+# RSpec for KDBTree::Tree.  Ensures correct functionality across a number of test cases.
+#
+# Usage (requires rspec gem):
+# rspec kdbtree_spec.rb
+#
+# Written by Fravic (fravic.com) for the Square coding challenge.
+
 require './kdbtree.rb'
 
 describe KDBTree do
@@ -84,7 +93,6 @@ describe KDBTree do
       coordarr << coords
       tree.insert(coords, {}, i.to_s)
     end
-    puts coordarr.to_s
     tree.query(Region.new([(0...10), (0...10)]), "5").size.should == 1
   end
 

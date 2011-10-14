@@ -1,7 +1,14 @@
 #!/usr/bin/env ruby
 
-# Runs a set of queries on a list of payments
-# Usage: ./square.rb payments.txt queries.txt
+# square.rb
+#
+# Runs a set of queries on a list of payments.  Formats input for insertion into
+# a KDBTree and runs queries from the given text file.
+#
+# Usage:
+# ./square.rb payments.txt queries.txt
+#
+# Written by Fravic (fravic.com) for the Square coding challenge.
 
 require './kdbtree.rb'
 include KDBTree
@@ -27,7 +34,7 @@ payfile.each_line do |line|
   coords = [lat, lng]
   data = {:name => name, :category => category}
   tree.insert(coords, data, category)
-#  print "Initializing payments tree.  Adding payment #{payfile.lineno}...\r"
+  print "Initializing payments tree.  Adding payment #{payfile.lineno}...\r"
 end
 
 # Run queries from file
@@ -43,7 +50,9 @@ queryfile.each_line do |line|
   category = query[2].strip if query.size >= 3 && !query[2].strip.empty?
 
   # By default, use a 1km radius
-  dist = 1.0
+  # In reality, KM_PER_DEGREE will vary across the globe.  Use this as a
+  # reasonable approximation.
+  dist = 1.0 / KM_PER_DEGREE
   dist = query[3].to_f / KM_PER_DEGREE if query.size >= 4
 
   lat_range = (lat - dist...lat + dist)
@@ -51,6 +60,12 @@ queryfile.each_line do |line|
   region = Region.new([lat_range, lng_range])
 
   results = tree.query(region, category)
+
+  # KDBTree returns points from a rectangular region; need a circular radius
+  results.reject! do |r|
+    Math.sqrt((r[:coords][0] - lat) ** 2 + (r[:coords][1] - lng) ** 2) > dist
+  end
+
   results.each do |r|
     entry = [r[:data][:name],
              r[:data][:category],
@@ -59,6 +74,6 @@ queryfile.each_line do |line|
     puts entry.join(', ')
   end
 
-  puts "\r\nFound #{results.count} merchants for query #{queryfile.lineno}."
+  # Empty line between queries
   puts
 end

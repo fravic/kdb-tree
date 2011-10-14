@@ -1,6 +1,12 @@
+# class Region
+#
+# A region is an array of n 1-dimensional range objects representing an
+# n-hyperrectangle.
+#
+# Written by Fravic (fravic.com) for the Square coding challenge.
+
 module KDBTree
 
-  # A region is an array of n 1-dimensional range objects representing an n-hyperrectangle.
   class Region
     def initialize(ranges)
       @ranges = ranges
